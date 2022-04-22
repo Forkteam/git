@@ -273,6 +273,11 @@ static void setup_tracking(const char *new_ref, const char *orig_ref,
 			goto cleanup;
 		}
 
+	/*
+	 * This check does not apply to the BRANCH_TRACK_INHERIT
+	 * option; you can inherit one or more tracking entries
+	 * and the tracking.matches counter is not incremented.
+	 */
 	if (tracking.matches > 1) {
 		int status = die_message(_("not tracking: ambiguous information for ref '%s'"),
 					    orig_ref);
@@ -305,6 +310,20 @@ static void setup_tracking(const char *new_ref, const char *orig_ref,
 			strbuf_release(&remotes_advice);
 		}
 		exit(status);
+	}
+
+	if (track == BRANCH_TRACK_SIMPLE) {
+		/*
+		 * Only track if remote branch name matches.
+		 * Reaching into items[0].string is safe because
+		 * we know there is at least one and not more than
+		 * one entry (because not BRANCH_TRACK_INHERIT).
+		 */
+		const char *tracked_branch;
+		if (!skip_prefix(tracking.srcs->items[0].string,
+				 "refs/heads/", &tracked_branch) ||
+		    strcmp(tracked_branch, new_ref))
+			return;
 	}
 
 	if (tracking.srcs->nr < 1)
@@ -564,7 +583,7 @@ static int submodule_create_branch(struct repository *r,
 	child.err = -1;
 	child.stdout_to_stderr = 1;
 
-	prepare_other_repo_env(&child.env_array, r->gitdir);
+	prepare_other_repo_env(&child.env, r->gitdir);
 	/*
 	 * submodule_create_branch() is indirectly invoked by "git
 	 * branch", but we cannot invoke "git branch" in the child
@@ -598,6 +617,9 @@ static int submodule_create_branch(struct repository *r,
 		break;
 	case BRANCH_TRACK_INHERIT:
 		strvec_push(&child.args, "--track=inherit");
+		break;
+	case BRANCH_TRACK_SIMPLE:
+		strvec_push(&child.args, "--track=simple");
 		break;
 	case BRANCH_TRACK_UNSPECIFIED:
 		/* Default for "git checkout". Do not pass --track. */
